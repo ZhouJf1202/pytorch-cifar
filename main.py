@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
+from torch.utils.tensorboard import SummaryWriter
 
 import torchvision
 import torchvision.transforms as transforms
@@ -14,6 +15,8 @@ import argparse
 from models import *
 from utils import progress_bar
 
+torch.cuda.set_device(1)
+writer = SummaryWriter()
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
@@ -49,7 +52,7 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship'
 # Model
 print('==> Building model..')
 # net = VGG('VGG19')
-# net = ResNet18()
+net = ResNet56()
 # net = PreActResNet18()
 # net = GoogLeNet()
 # net = DenseNet121()
@@ -60,10 +63,10 @@ print('==> Building model..')
 # net = ShuffleNetG2()
 # net = SENet18()
 # net = ShuffleNetV2(1)
-net = EfficientNetB0()
+# net = EfficientNetB0()
 net = net.to(device)
 if device == 'cuda':
-    net = torch.nn.DataParallel(net)
+    net = torch.nn.DataParallel(net, device_ids=[1,2])
     cudnn.benchmark = True
 
 if args.resume:
@@ -100,6 +103,10 @@ def train(epoch):
 
         progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
             % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
+        
+        writer.add_scalar('Loss/train', train_loss, epoch)
+        writer.add_scalar('Acc/train', 100.*correct/total, epoch)
+        
 
 def test(epoch):
     global best_acc
@@ -134,6 +141,19 @@ def test(epoch):
             os.mkdir('checkpoint')
         torch.save(state, './checkpoint/ckpt.pth')
         best_acc = acc
+        
+    writer.add_scalar('Loss/test', test_loss, epoch)
+    writer.add_scalar('Acc/test', acc, epoch)
+        
+    global optimizer
+    if acc>=78. and acc<=90.:
+        args.lr = 0.01
+        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+    elif acc>90.0:
+        args.lr = 0.001
+        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+    if acc>94.:
+        os.exit()
 
 
 for epoch in range(start_epoch, start_epoch+200):
